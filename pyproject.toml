@@ -1,0 +1,14 @@
+[project]
+name = "todo"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "bcrypt>=5.0.0",
+    "fastapi[standard]>=0.127.0",
+    "passlib>=1.7.4",
+    "pydantic>=2.12.5",
+    "python-jose[cryptography]>=3.5.0",
+    "uvicorn>=0.40.0",
+]
