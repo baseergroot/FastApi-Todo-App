@@ -5,6 +5,11 @@
 ```bash
 git clone https://github.com/baseergroot/FastApi-Todo-App.git
 ```
+## Enter into project directory
+```bash
+cd FastApi-Todo-App
+```
+
 ## Install dependencies
 ```bash
 uv sync
