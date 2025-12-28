@@ -111,33 +111,41 @@ def verify_password(plain_password: str, hashed_password: str):
     hashed_password_bytes = hashed_password.encode('utf-8')
     return bcrypt.checkpw(password_byte_enc, hashed_password_bytes)
 
+class Signup(BaseModel):
+    name: str
+    username: str
+    password: str
 
 @app.post("/auth/signup")
-async def signup(name: str, username: str, password: str, response: Response):
-    hashed_password = hash_password(password)
+async def signup(signup: Signup, response: Response):
+    print("signup route called")
+    hashed_password = hash_password(signup.password)
     print("hashed passwd", hashed_password)
-    cursor.execute("INSERT INTO users (name, username, password) VALUES (?,?,?)", (name, username, hashed_password))
+    cursor.execute("INSERT INTO users (name, username, password) VALUES (?,?,?)", (signup.name, signup.username, hashed_password))
     connection.commit()
 
-    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+    cursor.execute("SELECT * FROM users WHERE username = ?", (signup.username,))
 
     user = cursor.fetchone()
-    response.set_cookie(key="token", value=create_access_token({"user_id": user[0],"name": name, "username": username}))
-    print(create_access_token({"username": username}), user[0])
+    response.set_cookie(key="token", value=create_access_token({"user_id": user[0],"name": signup.name, "username": signup.username}))
+    # print(create_access_token({"username": username}), user[0])
     return { "success": True, "message": "user created" }
 
+class Login(BaseModel):
+    username: str
+    password: str
 
 @app.post("/auth/login")
-async def login(username, password, response: Response):
-    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+async def login(login: Login, response: Response):
+    cursor.execute("SELECT * FROM users WHERE username = ?", (login.username,))
     user = cursor.fetchone()
     if not user:
         return "User not exist"
     print(user)
-    correct_password = verify_password(password, user[3])
+    correct_password = verify_password(login.password, user[3])
     if not correct_password:
         return "Wrong credintials"
-    response.set_cookie(key="token", value=create_access_token({"user_id": user[0],"name": user[1], "username": username}))
+    response.set_cookie(key="token", value=create_access_token({"user_id": user[0],"name": user[1], "username": login.username}))
     return "Logged in Success"
 
 

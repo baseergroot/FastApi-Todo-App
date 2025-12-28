@@ -11,3 +11,6 @@ wheels/
 
 # Database
 todo.db
+
+# Test
+app.ts
