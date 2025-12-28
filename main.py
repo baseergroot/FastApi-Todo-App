@@ -65,16 +65,48 @@ def read_root():
 
 class Todo(BaseModel):
     todo: str
+    token: str
 
-@app.get("/todos")
-async def get_todos():
-    cursor.execute("SELECT * FROM todos")
+@app.get("/todos/{token}")
+async def get_todos(token: str):
+    payload = decode_access_token(token)
+    cursor.execute("""
+    SELECT * FROM todos WHERE user_id = ?
+    """, (payload["user_id"],))
     todos = cursor.fetchall()
-    return todos
+    todos_array = []
+    for todo in todos:
+        new_todo = list(todo)
+        new_todo.pop()
+
+        
+        todos_array.append(new_todo)
+
+    # print("array", todos_array)
+    return {"todos": todos_array}
+
+# @app.get("/test/{token}")
+# async def get_todos(token: str):
+#     payload = decode_access_token(token)
+#     cursor.execute("""
+#     SELECT * FROM todos WHERE user_id = ?
+#     """, (payload["user_id"],))
+#     todos = cursor.fetchall()
+#     todos_array = []
+#     for todo in todos:
+#         new_todo = list(todo)
+#         new_todo.pop()
+
+        
+#         todos_array.append(new_todo)
+
+#     # print("array", todos_array)
+#     return {"todos": todos_array}
+
 
 @app.post("/todos/create")
 async def create_todo(item: Todo, request: Request):
-    token = request.cookies.get("token")
+    token = item.token
     payload = decode_access_token(token)
     cursor.execute("INSERT INTO todos (todo, user_id) VALUES (?, ?)", (item.todo, payload['user_id']))
     connection.commit()
@@ -129,7 +161,7 @@ async def signup(signup: Signup, response: Response):
     user = cursor.fetchone()
     response.set_cookie(key="token", value=create_access_token({"user_id": user[0],"name": signup.name, "username": signup.username}))
     # print(create_access_token({"username": username}), user[0])
-    return { "success": True, "message": "user created" }
+    return { "success": True, "message": "user created", "token": create_access_token({"user_id": user[0],"name": signup.name, "username": signup.username}) }
 
 class Login(BaseModel):
     username: str
@@ -146,39 +178,28 @@ async def login(login: Login, response: Response):
     if not correct_password:
         return "Wrong credintials"
     response.set_cookie(key="token", value=create_access_token({"user_id": user[0],"name": user[1], "username": login.username}))
-    return "Logged in Success"
+    return { "success": True, "message": "Logged in Success", "token": create_access_token({"user_id": user[0],"name": user[1], "username": login.username})}
 
+class Check(BaseModel):
+    token: str
 
-
-@app.get("/check")
-async def get_profile(request: Request):
-    token = request.cookies.get("token")
+@app.post("/auth/check")
+async def get_profile(request: Request, check: Check):
+    token = check.token
+    if not token:
+        print("message", "token is empty")
+        return {"success": False, "message": "token is empty"}
     payload = decode_access_token(token)
     print(token, payload)
+    if not payload["user_id"]:
+        print("message", "token is invalid")
+        return {"success": False, "message": "token is invalid"}
      # 2. Use JSON_GROUP_ARRAY to nest todos inside the user record
-    query = """
-    SELECT 
-        u.user_id, 
-        u.name, 
-        u.username,
-        COALESCE(
-            (SELECT json_group_array(
-                json_object('todo_id', t.todo_id, 'todo', t.todo)
-            ) FROM todos t WHERE t.user_id = u.user_id), 
-            '[]'
-        ) as todos
-    FROM users u
-    WHERE u.user_id = ?
-    """
     
-    cursor.execute(query, (payload["user_id"],))
-    row = cursor.fetchone()
-    # user_dict = dict(row)
-    # # print(user_dict)
-    # user_dict["todos"] = json.loads(user_dict["todos"])
-    # print(user_dict["name"])
+    cursor.execute("SELECT user_id, name, username FROM users WHERE user_id = ?", (payload["user_id"],))
+    user = cursor.fetchone()
 
-    return row
+    return {"user": user}
 
 
 # get todos for logged in user
