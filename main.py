@@ -20,8 +20,8 @@ connection = None
 cursor = None
 
 
-SECRET_KEY = "c3230e4792278d3b0450ef8c70e41f0eba73211deeabdcd7c2cf674dfd5831fa" # openssl rand -hex 32
-ALGORITHM = "HS256"
+SECRET_KEY = os.getenv("SECRET_KEY") # openssl rand -hex 32
+ALGORITHM = os.getenv("ALGORITHM")
 
 class Token(BaseModel):
     access_token: str
