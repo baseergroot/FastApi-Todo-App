@@ -9,8 +9,4 @@ wheels/
 # Virtual environments
 .venv
 
-# Database
-todo.db
-
-# Test
-app.ts
+.env

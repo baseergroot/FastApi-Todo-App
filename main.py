@@ -1,3 +1,4 @@
+
 # main.py
 from fastapi import FastAPI, Response, Request
 from pydantic import BaseModel
@@ -6,11 +7,18 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta,timezone
 import bcrypt
 import json
+import psycopg2
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
+DATABASE_URL = os.getenv("DATABASE_URL")
 app = FastAPI()
-connection = sqlite3.connect("todo.db")
-# connection.row_factory = sqlite3.Row
-cursor = connection.cursor()
+
+
+connection = None
+cursor = None
+
 
 SECRET_KEY = "c3230e4792278d3b0450ef8c70e41f0eba73211deeabdcd7c2cf674dfd5831fa" # openssl rand -hex 32
 ALGORITHM = "HS256"
@@ -20,8 +28,6 @@ class Token(BaseModel):
     token_type: str
 
 
-# this function will create the token
-# for particular data
 def create_access_token(data: dict):
     to_encode = data.copy()
     
@@ -38,26 +44,35 @@ def decode_access_token(token: str):
     payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     return payload
 
-# print(create_access_token({"name": " uhdd"}))
 
-cursor.execute('''
-  CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    username TEXT UNIQUE,
-    password TEXT
-  )
-''')
+@app.on_event("startup")
+def startup():
+    global connection, cursor
 
-cursor.execute('''
-  CREATE TABLE IF NOT EXISTS todos (
-    todo_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    todo TEXT NOT NULL,
-    -- Add the foreign key here to link to a specific user
-    user_id INTEGER NOT NULL, 
-    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
-  )
-''')
+    connection = psycopg2.connect(DATABASE_URL)
+    cursor = connection.cursor()
+
+    cursor.execute("""
+      CREATE TABLE IF NOT EXISTS users (
+        user_id SERIAL PRIMARY KEY,
+        name TEXT,
+        username TEXT UNIQUE,
+        password TEXT
+      )
+    """)
+
+    cursor.execute("""
+      CREATE TABLE IF NOT EXISTS todos (
+        todo_id SERIAL PRIMARY KEY,
+        todo TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        FOREIGN KEY (user_id)
+          REFERENCES users(user_id)
+          ON DELETE CASCADE
+      )
+    """)
+
+    connection.commit()
 
 @app.get("/")
 def read_root():
@@ -71,7 +86,7 @@ class Todo(BaseModel):
 async def get_todos(token: str):
     payload = decode_access_token(token)
     cursor.execute("""
-    SELECT * FROM todos WHERE user_id = ?
+    SELECT * FROM todos WHERE user_id = %s
     """, (payload["user_id"],))
     todos = cursor.fetchall()
     todos_array = []
@@ -85,44 +100,26 @@ async def get_todos(token: str):
     # print("array", todos_array)
     return {"todos": todos_array}
 
-# @app.get("/test/{token}")
-# async def get_todos(token: str):
-#     payload = decode_access_token(token)
-#     cursor.execute("""
-#     SELECT * FROM todos WHERE user_id = ?
-#     """, (payload["user_id"],))
-#     todos = cursor.fetchall()
-#     todos_array = []
-#     for todo in todos:
-#         new_todo = list(todo)
-#         new_todo.pop()
-
-        
-#         todos_array.append(new_todo)
-
-#     # print("array", todos_array)
-#     return {"todos": todos_array}
-
 
 @app.post("/todos/create")
 async def create_todo(item: Todo, request: Request):
     token = item.token
     payload = decode_access_token(token)
-    cursor.execute("INSERT INTO todos (todo, user_id) VALUES (?, ?)", (item.todo, payload['user_id']))
+    cursor.execute("INSERT INTO todos (todo, user_id) VALUES (%s, %s)", (item.todo, payload['user_id']))
     connection.commit()
     print(item.todo)
     return item
 
 @app.patch("/todos/update/{todo_id}")
 async def update_todo(todo_id: int, updated_todo):
-    cursor.execute("UPDATE todos SET todo = ? WHERE `todo_id = ?", (updated_todo, todo_id,))
+    cursor.execute("UPDATE todos SET todo = %s WHERE `todo_id = %s", (updated_todo, todo_id,))
     connection.commit()
     return todo_id
-    
+
 
 @app.delete("/todos/delete/{todo_id}")
 async def delete_todo(todo_id: int):
-    cursor.execute("DELETE FROM todos WHERE todo_id = ?", (todo_id,))
+    cursor.execute("DELETE FROM todos WHERE todo_id = %s", (todo_id,))
     connection.commit()
     return todo_id
 
@@ -153,10 +150,10 @@ async def signup(signup: Signup, response: Response):
     print("signup route called")
     hashed_password = hash_password(signup.password)
     print("hashed passwd", hashed_password)
-    cursor.execute("INSERT INTO users (name, username, password) VALUES (?,?,?)", (signup.name, signup.username, hashed_password))
+    cursor.execute("INSERT INTO users (name, username, password) VALUES (%s,%s,%s)", (signup.name, signup.username, hashed_password))
     connection.commit()
 
-    cursor.execute("SELECT * FROM users WHERE username = ?", (signup.username,))
+    cursor.execute("SELECT * FROM users WHERE username = %s", (signup.username,))
 
     user = cursor.fetchone()
     response.set_cookie(key="token", value=create_access_token({"user_id": user[0],"name": signup.name, "username": signup.username}))
@@ -169,7 +166,7 @@ class Login(BaseModel):
 
 @app.post("/auth/login")
 async def login(login: Login, response: Response):
-    cursor.execute("SELECT * FROM users WHERE username = ?", (login.username,))
+    cursor.execute("SELECT * FROM users WHERE username = %s", (login.username,))
     user = cursor.fetchone()
     if not user:
         return "User not exist"
@@ -196,10 +193,9 @@ async def get_profile(request: Request, check: Check):
         return {"success": False, "message": "token is invalid"}
      # 2. Use JSON_GROUP_ARRAY to nest todos inside the user record
     
-    cursor.execute("SELECT user_id, name, username FROM users WHERE user_id = ?", (payload["user_id"],))
+    cursor.execute("SELECT user_id, name, username FROM users WHERE user_id = %s", (payload["user_id"],))
     user = cursor.fetchone()
 
     return {"user": user}
 
 
-# get todos for logged in user
