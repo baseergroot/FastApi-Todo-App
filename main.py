@@ -199,3 +199,8 @@ async def get_profile(request: Request, check: Check):
     return {"user": user}
 
 
+@app.post("/auth/delete")
+async def logout():
+    print("Logout success")
+    return {"success": True, 'message': "user logged out"}
+
