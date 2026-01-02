@@ -78,72 +78,12 @@ def startup():
 def read_root():
     return {"message": "Hello, FastAPI + uv! by baseer"}
 
-class Todo(BaseModel):
-    todo: str
-    token: str
-
-@app.get("/todos/{token}")
-async def get_todos(token: str):
-    payload = decode_access_token(token)
-    cursor.execute("""
-    SELECT * FROM todos WHERE user_id = %s
-    """, (payload["user_id"],))
-    todos = cursor.fetchall()
-    todos_array = []
-    for todo in todos:
-        new_todo = list(todo)
-        new_todo.pop()
-
-        
-        todos_array.append(new_todo)
-
-    # print("array", todos_array)
-    return {"todos": todos_array}
-
-
-@app.post("/todos/create")
-async def create_todo(item: Todo, request: Request):
-    token = item.token
-    payload = decode_access_token(token)
-    cursor.execute("INSERT INTO todos (todo, user_id) VALUES (%s, %s)", (item.todo, payload['user_id']))
-    connection.commit()
-    print(item.todo)
-    return item
-
-@app.patch("/todos/update/{todo_id}")
-async def update_todo(todo_id: int, updated_todo):
-    cursor.execute("UPDATE todos SET todo = %s WHERE `todo_id = %s", (updated_todo, todo_id,))
-    connection.commit()
-    return todo_id
-
-
-@app.delete("/todos/delete/{todo_id}")
-async def delete_todo(todo_id: int):
-    cursor.execute("DELETE FROM todos WHERE todo_id = %s", (todo_id,))
-    connection.commit()
-    return todo_id
-
-# password hashing
-def hash_password(password: str):
-    # Convert string to bytes
-    pwd_bytes = password.encode('utf-8')
-
-    print("bytes: ", pwd_bytes)
-    # Generate salt and hash
-    salt = bcrypt.gensalt()
-    hashed_password = bcrypt.hashpw(pwd_bytes, salt)
-    return hashed_password.decode('utf-8')  # Store this string in your DB
-
-# --- Verifying (bcrypt.compare equivalent) ---
-def verify_password(plain_password: str, hashed_password: str):
-    password_byte_enc = plain_password.encode('utf-8')
-    hashed_password_bytes = hashed_password.encode('utf-8')
-    return bcrypt.checkpw(password_byte_enc, hashed_password_bytes)
 
 class Signup(BaseModel):
     name: str
     username: str
     password: str
+
 
 @app.post("/auth/signup")
 async def signup(signup: Signup, response: Response):
@@ -180,6 +120,99 @@ async def login(login: Login, response: Response):
 class Check(BaseModel):
     token: str
 
+
+@app.post("/auth/logout")
+async def logout():
+    print("Logout success")
+    return {"success": True, 'message': "user logged out"}
+
+
+class Todo(BaseModel):
+    todo: str
+    token: str
+
+def get_todos_array(token):
+    payload = decode_access_token(token)
+    cursor.execute("""
+    SELECT * FROM todos WHERE user_id = %s
+    """, (payload["user_id"],))
+    todos = cursor.fetchall()
+    todos_array = []
+    for todo in todos:
+        new_todo = list(todo)
+        new_todo.pop()
+
+        
+        todos_array.append(new_todo)
+    
+    return todos_array
+
+
+@app.get("/todos/{token}")
+async def get_todos(token: str):
+    
+    todos = get_todos_array(token=token)
+
+    # print("array", todos_array)
+    return {"success": True, "todos": todos}
+
+
+@app.post("/todos/create")
+async def create_todo(item: Todo, request: Request):
+    token = item.token
+    payload = decode_access_token(token)
+    cursor.execute("INSERT INTO todos (todo, user_id) VALUES (%s, %s)", (item.todo, payload['user_id']))
+    connection.commit()
+    print(item.todo)
+    todos = get_todos_array(token=token)
+    return {"success": True, "message": "created successfully", "newTodos": todos}
+
+class Update_Todo(BaseModel):
+    todo_id: int
+    new_todo: str
+    token: str
+
+@app.patch("/todos/update")
+async def update_todo(items: Update_Todo):
+    cursor.execute("UPDATE todos SET todo = %s WHERE todo_id = %s", (items.new_todo, items.todo_id,))
+    connection.commit()
+
+    todos = get_todos_array(token=items.token)
+    return {"success": True, "message": "updated successfully", "updated_todos": todos}
+
+
+class Delete_Todo(BaseModel):
+    todo_id: int
+    token: str
+
+@app.delete("/todos/delete")
+async def delete_todo(items: Delete_Todo):
+    cursor.execute("DELETE FROM todos WHERE todo_id = %s", (items.todo_id,))
+    connection.commit()
+
+    todos = get_todos_array(token=items.token)
+    return {"success": True, "message": "updated successfully", "updated_todos": todos}
+
+# password hashing
+def hash_password(password: str):
+    # Convert string to bytes
+    pwd_bytes = password.encode('utf-8')
+
+    print("bytes: ", pwd_bytes)
+    # Generate salt and hash
+    salt = bcrypt.gensalt()
+    hashed_password = bcrypt.hashpw(pwd_bytes, salt)
+    return hashed_password.decode('utf-8')  # Store this string in your DB
+
+# --- Verifying (bcrypt.compare equivalent) ---
+def verify_password(plain_password: str, hashed_password: str):
+    password_byte_enc = plain_password.encode('utf-8')
+    hashed_password_bytes = hashed_password.encode('utf-8')
+    return bcrypt.checkpw(password_byte_enc, hashed_password_bytes)
+
+
+
+
 @app.post("/auth/check")
 async def get_profile(request: Request, check: Check):
     token = check.token
@@ -191,16 +224,8 @@ async def get_profile(request: Request, check: Check):
     if not payload["user_id"]:
         print("message", "token is invalid")
         return {"success": False, "message": "token is invalid"}
-     # 2. Use JSON_GROUP_ARRAY to nest todos inside the user record
     
     cursor.execute("SELECT user_id, name, username FROM users WHERE user_id = %s", (payload["user_id"],))
     user = cursor.fetchone()
 
-    return {"user": user}
-
-
-@app.post("/auth/logout")
-async def logout():
-    print("Logout success")
-    return {"success": True, 'message': "user logged out"}
-
+    return {"user": user, "success": True, "message": "user is logged in"}
