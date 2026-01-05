@@ -74,6 +74,15 @@ def startup():
 
     connection.commit()
 
+@app.on_event("shutdown")
+def shutdown():
+    global connection, cursor
+
+    connection = psycopg2.close()
+    connection.commit()
+    print("disconnect")
+
+
 @app.get("/")
 def read_root():
     return {"message": "Hello, FastAPI + uv! by baseer"}
@@ -211,16 +220,16 @@ def verify_password(plain_password: str, hashed_password: str):
     return bcrypt.checkpw(password_byte_enc, hashed_password_bytes)
 
 
-
-
 @app.post("/auth/check")
 async def get_profile(request: Request, check: Check):
     token = check.token
     if not token:
         print("message", "token is empty")
         return {"success": False, "message": "token is empty"}
+    
     payload = decode_access_token(token)
     print(token, payload)
+
     if not payload["user_id"]:
         print("message", "token is invalid")
         return {"success": False, "message": "token is invalid"}
